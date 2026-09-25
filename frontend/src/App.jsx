@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 // 🌐 ضع هنا رابط السيرفر الخاص بك (عند تشغيله محلياً يكون http://localhost:8000)
 // عند رفع الباك-إند سحابياً سنستبدله بالرابط السحابي
-const BACKEND_URL = "http://localhost:8000"; 
+const BACKEND_URL = "https://dashboard.ngrok.com/get-started/your-authtoken "; 
 
 function App() {
   const [isMining, setIsMining] = useState(false);
