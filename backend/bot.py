@@ -20,7 +20,7 @@ app = FastAPI()
 # 🛡️ السماح للواجهة المرفوعة على Vercel بالاتصال بالسيرفر دون حظر (CORS)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # في الإنتاج يمكنك وضع رابط Vercel الخاص بك لحماية أكبر
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -37,26 +37,19 @@ def home():
 async def ping_mining(request: MiningRequest):
     """رابط يستقبل إشارة التعدين من الواجهة ويحسب الأرباح عبر البروكسي"""
     try:
-        # 1. التصفح الآمن ومشاركة البيانات عبر بروكسي PacketStream
-        # ملاحظة: نقوم بعمل طلب فحص لصفحة خفيفة كمحاكاة لنقل البيانات
         proxy_auth = f"http://{API_KEY}@{PROXY_URL}" if API_KEY else None
         
         async with httpx.AsyncClient(proxies=proxy_auth, timeout=5.0) as client:
-            # مهمة بيانات عامة (مثال: التحقق من جهوزية شبكة قوقل)
             response = await client.get("https://google.com")
-            bytes_transferred = len(response.content) + 500 # حجم البيانات الممررة
+            bytes_transferred = len(response.content) + 500
         
-        # 2. الحسبة المالية الحقيقية (تحويل الميجابايت إلى سنتات دولارية)
-        # نمنح المستخدم جزءاً من السنت مقابل كل عملية مشاركة ناجحة
         earned_amount = 0.0005 
         
-        # 3. جلب الرصيد الحالي وتحديثه في قاعدة بيانات Supabase المستقلة
         current_balance = get_balance(request.telegram_id)
         new_balance = current_balance + earned_amount
         
         supabase.table("app_users").update({"balance_usd": new_balance}).eq("telegram_id", request.telegram_id).execute()
         
-        # 4. تسجيل تقرير الاستهلاك في جدول حركة البيانات (Traffic Logs) لمنع التزوير
         log_data = {
             "user_id": request.telegram_id,
             "mb_shared": round(bytes_transferred / (1024 * 1024), 4),
@@ -93,7 +86,16 @@ async def main_bot():
     await bot_app.start()
     await bot_app.updater.start_polling()
 
+# --- دالة التشغيل الرئيسية والحديثة لتشغيل السيرفر والبوت معاً ---
+async def start_all():
+    # 1. تشغيل البوت في الخلفية
+    await main_bot()
+    
+    # 2. تشغيل سيرفر الـ API لـ FastAPI
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
+    server = uvicorn.Server(config)
+    await server.serve()
+
 if __name__ == "__main__":
-    loop = asyncio.get_event_loop()
-    loop.create_task(main_bot())
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # تشغيل حلقة الأحداث بشكل آمن ومتوافق مع إصدارات بايثون الحديثة
+    asyncio.run(start_all())
