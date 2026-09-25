@@ -1,122 +1,102 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import React, { useState, useEffect } from 'react';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [isMining, setIsMining] = useState(false);
+  const [balance, setBalance] = useState(0.00);
+  const [telegramUser, setTelegramUser] = useState(null);
+
+  useEffect(() => {
+    // 🤖 قراءة بيانات مستخدم التلجرام الحقيقية فور فتح الـ Mini App
+    if (window.Telegram && window.Telegram.WebApp) {
+      const webApp = window.Telegram.WebApp;
+      webApp.ready();
+      webApp.expand(); // تمديد الشاشة بالكامل داخل الهاتف
+      
+      if (webApp.initDataUnsafe && webApp.initDataUnsafe.user) {
+        setTelegramUser(webApp.initDataUnsafe.user);
+      }
+    }
+  }, []);
+
+  // 🔄 محاكاة عداد رقمي متحرك لتشغيل مشاركة البيانات حياً
+  useEffect(() => {
+    let interval = null;
+    if (isMining) {
+      interval = setInterval(() => {
+        setBalance((prevBalance) => prevBalance + 0.0001);
+      }, 1000); 
+    } else {
+      clearInterval(interval);
+    }
+    return () => clearInterval(interval);
+  }, [isMining]);
+
+  const toggleMining = () => {
+    setIsMining(!isMining);
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div style={{
+      fontFamily: 'Segoe UI, Tahoma, Geneva, Verdana, sans-serif',
+      backgroundColor: '#17212b', // متوافق مع ثيم تلجرام المظلم
+      color: '#fff',
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '20px',
+      textAlign: 'center'
+    }}>
+      <h2>شبكة التشغيل التشاركية السورية 🚀</h2>
+      
+      {telegramUser ? (
+        <p style={{ color: '#64b5f6' }}>أهلاً بك، {telegramUser.first_name} (ID: {telegramUser.id})</p>
+      ) : (
+        <p style={{ color: '#e57373' }}>يتم الفتح خارج بيئة التلجرام (وضع المحاكاة)</p>
+      )}
 
-      <div className="ticks"></div>
+      <div style={{
+        backgroundColor: '#242f3d',
+        borderRadius: '15px',
+        padding: '30px',
+        margin: '20px 0',
+        width: '85%',
+        boxShadow: '0 4px 15px rgba(0,0,0,0.3)'
+      }}>
+        <p style={{ fontSize: '18px', color: '#aaaaaa', margin: '0' }}>💰 رصيدك الحالي بالدولار:</p>
+        <h1 style={{ fontSize: '42px', color: '#4caf50', margin: '10px 0' }}>
+          ${balance.toFixed(4)}
+        </h1>
+        <p style={{ fontSize: '14px', color: isMining ? '#4caf50' : '#e57373' }}>
+          ● {isMining ? "جهازك يشارك البيانات ويحصد الأرباح الآن..." : "التعدين متوقف حالياً"}
+        </p>
+      </div>
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      <button 
+        onClick={toggleMining}
+        style={{
+          backgroundColor: isMining ? '#f44336' : '#2196f3',
+          color: '#white',
+          border: 'none',
+          borderRadius: '12px',
+          padding: '15px 30px',
+          fontSize: '18px',
+          fontWeight: 'bold',
+          cursor: 'pointer',
+          width: '85%',
+          boxShadow: '0 4px 10px rgba(0,0,0,0.2)',
+          transition: '0.3s'
+        }}
+      >
+        {isMining ? "🛑 إيقاف مشاركة البيانات" : "⚡ بدء التعدين ومشاركة الإنترنت"}
+      </button>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <p style={{ fontSize: '12px', color: '#707e8b', marginTop: '30px', width: '80%' }}>
+        * بالتفعيل، أنت توافق صراحة على مشاركة جزء ضئيل جداً وآمن من حركة مرور الإنترنت الفائضة لديك مقابل نقاط مالية.
+      </p>
+    </div>
+  );
 }
 
-export default App
+export default App;
