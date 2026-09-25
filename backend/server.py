@@ -1,6 +1,6 @@
-import uvicorn
+import asyncio
 
-from bot import app
+from bot import start_all
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    asyncio.run(start_all())
