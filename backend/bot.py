@@ -1,5 +1,6 @@
 import os
 import asyncio
+from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
 import httpx
@@ -29,7 +30,21 @@ if not WEB_APP_URL:
 if urlparse(WEB_APP_URL).scheme != "https":
     raise RuntimeError("WEB_APP_URL must be a valid HTTPS URL for Telegram Mini App buttons.")
 
-app = FastAPI()
+@asynccontextmanager
+async def telegram_lifespan(fastapi_app: FastAPI):
+    telegram_app = Application.builder().token(TOKEN).build()
+    telegram_app.add_handler(CommandHandler("start", start))
+    await telegram_app.initialize()
+    await telegram_app.updater.start_polling()
+    await telegram_app.start()
+    try:
+        yield
+    finally:
+        await telegram_app.updater.stop()
+        await telegram_app.stop()
+        await telegram_app.shutdown()
+
+app = FastAPI(lifespan=telegram_lifespan)
 
 # 🛡️ السماح للواجهة المرفوعة على Vercel بالاتصال بالسيرفر دون حظر (CORS)
 app.add_middleware(
@@ -53,7 +68,7 @@ async def ping_mining(request: MiningRequest):
     try:
         proxy_auth = f"http://{API_KEY}@{PROXY_URL}" if API_KEY else None
         
-        async with httpx.AsyncClient(proxies=proxy_auth, timeout=5.0) as client:
+        async with httpx.AsyncClient(proxy=proxy_auth, timeout=5.0) as client:
             response = await client.get("https://google.com")
             bytes_transferred = len(response.content) + 500
         
@@ -93,19 +108,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
-async def main_bot():
-    bot_app = Application.builder().token(TOKEN).build()
-    bot_app.add_handler(CommandHandler("start", start))
-    await bot_app.initialize()
-    await bot_app.start()
-    await bot_app.updater.start_polling()
-
 # --- دالة التشغيل الرئيسية والحديثة لتشغيل السيرفر والبوت معاً ---
 async def start_all():
-    # 1. تشغيل البوت في الخلفية
-    await main_bot()
-
-    # 2. تشغيل سيرفر الـ API لـ FastAPI باستخدام منفذ النشر الحقيقي
     config = uvicorn.Config(app, host="0.0.0.0", port=PORT, loop="asyncio")
     server = uvicorn.Server(config)
     await server.serve()

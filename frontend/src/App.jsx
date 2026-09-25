@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://depin-telegram-project.onrender.com/';
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'https://depin-telegram-project.onrender.com').replace(/\/+$/, '');
 
 function App() {
   const [isMining, setIsMining] = useState(false);
