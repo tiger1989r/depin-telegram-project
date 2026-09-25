@@ -13,13 +13,20 @@ import uvicorn
 from database import get_or_create_user, get_balance, supabase
 
 load_dotenv()
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PACKETSTREAM_PROXY", "proxy.packetstream.io:3128")
-API_KEY = os.getenv("PACKETSTREAM_API_KEY")
-WEB_APP_URL = os.getenv("WEB_APP_URL", "")
+API_KEY = os.getenv("PACKETSTREAM_API_KEY", "").strip()
+WEB_APP_URL = os.getenv("WEB_APP_URL", "").strip()
+PORT = int(os.getenv("PORT", "8000"))
 
-if not WEB_APP_URL or urlparse(WEB_APP_URL).scheme != "https":
-    raise RuntimeError("Set WEB_APP_URL in backend/.env to your real Cloudflare Tunnel HTTPS URL.")
+if not TOKEN:
+    raise RuntimeError("Set TELEGRAM_BOT_TOKEN in backend/.env before starting the bot.")
+
+if not WEB_APP_URL:
+    raise RuntimeError("Set WEB_APP_URL in backend/.env to your public HTTPS Mini App URL.")
+
+if urlparse(WEB_APP_URL).scheme != "https":
+    raise RuntimeError("WEB_APP_URL must be a valid HTTPS URL for Telegram Mini App buttons.")
 
 app = FastAPI()
 
@@ -96,9 +103,9 @@ async def main_bot():
 async def start_all():
     # 1. تشغيل البوت في الخلفية
     await main_bot()
-    
-    # 2. تشغيل سيرفر الـ API لـ FastAPI
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
+
+    # 2. تشغيل سيرفر الـ API لـ FastAPI باستخدام منفذ النشر الحقيقي
+    config = uvicorn.Config(app, host="0.0.0.0", port=PORT, loop="asyncio")
     server = uvicorn.Server(config)
     await server.serve()
 
