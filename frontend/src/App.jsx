@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 
 // 🌐 ضع هنا رابط السيرفر الخاص بك (عند تشغيله محلياً يكون http://localhost:8000)
 // عند رفع الباك-إند سحابياً سنستبدله بالرابط السحابي
-const BACKEND_URL = "https://trycloudflare.com"; // الرابط الجديد الذي ظهر لك الآن
- 
+const BACKEND_URL = "https://trycloudflare.com"; 
 
 function App() {
   const [isMining, setIsMining] = useState(false);
