@@ -20,10 +20,6 @@ PRODUCTION_WEB_APP_URL = "https://depin-telegram-project.vercel.app/"
 WEB_APP_URL = os.getenv("WEB_APP_URL", PRODUCTION_WEB_APP_URL).strip()
 PORT = int(os.getenv("PORT", "8000"))
 
-if urlparse(WEB_APP_URL).hostname and urlparse(WEB_APP_URL).hostname.endswith(".trycloudflare.com"):
-    print("WEB_APP_URL is a temporary Cloudflare tunnel; using the production URL.")
-    WEB_APP_URL = PRODUCTION_WEB_APP_URL
-
 if not TOKEN:
     raise RuntimeError("Set TELEGRAM_BOT_TOKEN in backend/.env before starting the bot.")
 
