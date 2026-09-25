@@ -1,0 +1,5 @@
+python-telegram-bot==21.10
+supabase==2.13.0
+fastapi==0.115.8
+uvicorn==0.34.0
+python-dotenv==1.0.1
