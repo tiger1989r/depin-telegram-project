@@ -17,7 +17,7 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 PROXY_URL = os.getenv("PACKETSTREAM_PROXY", "proxy.packetstream.io:3128")
 API_KEY = os.getenv("PACKETSTREAM_API_KEY", "").strip()
 PRODUCTION_WEB_APP_URL = "https://depin-telegram-project.vercel.app/"
-WEB_APP_URL = os.getenv("WEB_APP_URL", PRODUCTION_WEB_APP_URL).strip()
+WEB_APP_URL = os.getenv("https://depin-telegram-project.vercel.app/", PRODUCTION_WEB_APP_URL).strip()
 PORT = int(os.getenv("PORT", "8000"))
 
 if not TOKEN:
