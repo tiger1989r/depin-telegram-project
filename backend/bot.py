@@ -1,5 +1,7 @@
 import os
 import asyncio
+from urllib.parse import urlparse
+
 import httpx
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -14,6 +16,10 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 PROXY_URL = os.getenv("PACKETSTREAM_PROXY", "proxy.packetstream.io:3128")
 API_KEY = os.getenv("PACKETSTREAM_API_KEY")
+WEB_APP_URL = os.getenv("WEB_APP_URL", "")
+
+if not WEB_APP_URL or urlparse(WEB_APP_URL).scheme != "https":
+    raise RuntimeError("Set WEB_APP_URL in backend/.env to your real Cloudflare Tunnel HTTPS URL.")
 
 app = FastAPI()
 
@@ -69,7 +75,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     get_or_create_user(tg_user.id, tg_user.username)
     
     keyboard = [
-        [InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://depin-telegram-project.vercel.app/"})]
+        [InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": WEB_APP_URL})]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
