@@ -32,9 +32,11 @@ async def lifespan(app: FastAPI):
     
     yield
     
+    # 🟢 التصحيح البرمجي الآمن لإصدارات المكتبة الحديثة عند الإغلاق
     await bot_app.bot.delete_webhook()
     await bot_app.stop()
-    await bot_app.uninitialize()
+    await bot_app.shutdown() # تم تصحيح الاسم هنا لمنع خطأ AttributeError
+
 
 app = FastAPI(lifespan=lifespan)
 
