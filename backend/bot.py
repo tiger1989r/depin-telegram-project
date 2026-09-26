@@ -1,6 +1,6 @@
 import os
-import asyncio
 import httpx
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
@@ -13,10 +13,37 @@ from database import get_or_create_user, get_balance, supabase
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TRAFF_TOKEN = os.getenv("TRAFFMONETIZER_TOKEN")
-# 🟢 رابط سيرفرك الحقيقي الدائم على Render
-RENDER_URL = "https://onrender.com" 
+RENDER_URL = "https://onrender.com"
 
-app = FastAPI()
+# 1. تهيئة بناء البوت بشكل سحابي مستقل (PTB v20+)
+bot_app = (
+    Application.builder()
+    .updater(None)  # إيقاف الـ Polling تماماً لاعتماد الـ Webhook
+    .token(TOKEN)
+    .build()
+)
+
+# 2. إدارة دورة حياة السيرفر (Lifespan) لربط الـ Webhook فور الإقلاع
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # تشغيل وتهيئة البوت في الذاكرة السحابية
+    await bot_app.initialize()
+    await bot_app.start()
+    
+    # ربط وتثبيت الـ Webhook رسمياً في سيرفرات التليجرام
+    webhook_url = f"{RENDER_URL}/webhook"
+    await bot_app.bot.set_webhook(url=webhook_url)
+    print(f"✅ Webhook is live and listening at: {webhook_url}")
+    
+    yield  # السيرفر يعمل الآن ويستقبل الرسائل بسلام
+    
+    # إغلاق آمن للاتصالات عند إطفاء الخادم
+    await bot_app.bot.delete_webhook()
+    await bot_app.stop()
+    await bot_app.uninitialize()
+
+# 3. تأسيس تطبيق FastAPI مع ربطه بـ Lifespan
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -29,24 +56,21 @@ app.add_middleware(
 class MiningRequest(BaseModel):
     telegram_id: int
 
-# تهيئة تطبيق البوت بشكل عالمي
-bot_app = Application.builder().token(TOKEN).build()
-
 @app.get("/")
 def home():
-    return {"status": "Server is running securely"}
+    return {"status": "Server is running securely with webhooks"}
 
-# 🚀 رابط الـ Webhook المستهدف الذي سيرسل له التلجرام الرسائل حياً
+# 🚀 نقطة الاستقبال الرئيسية (الـ Webhook Portal)
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    """استقبال الرسائل من التلجرام وتمريرها لكود البوت مباشرة"""
+    """استقبال دفقة البيانات الحية من التليجرام ومعالجتها فوراً"""
     try:
         data = await request.json()
         update = Update.de_json(data, bot_app.bot)
         await bot_app.process_update(update)
         return {"status": "ok"}
     except Exception as e:
-        print(f"Webhook Error: {e}")
+        print(f"Webhook Processing Error: {e}")
         return {"status": "error"}
 
 @app.post("/api/ping-mining")
@@ -75,7 +99,9 @@ async def ping_mining(request: MiningRequest):
         raise HTTPException(status_code=500, detail="Error")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """أمر الترحيب ودعم نظام الإحالات الفيروسي تلقائياً"""
     tg_user = update.effective_user
+    
     referrer_id = None
     if context.args:
         try:
@@ -107,7 +133,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     pass
     
     referral_link = f"https://t.me{context.bot.username}?start={tg_user.id}"
-    keyboard = [[InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://vercel.app"})]]
+    keyboard = [[InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://depin-telegram-project.vercel.app"})]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
@@ -116,22 +142,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup, parse_mode="Markdown"
     )
 
-# 🔄 إعداد وتشغيل المنظومة حياً عند إقلاع خادم ريندر
-@app.on_event("startup")
-async def on_startup():
-    bot_app.add_handler(CommandHandler("start", start))
-    await bot_app.initialize()
-    await bot_app.start()
-    # ربط البوت برابط الـ Webhook السحابي رسمياً في التلجرام
-    webhook_url = f"{RENDER_URL}/webhook"
-    await bot_app.bot.set_webhook(url=webhook_url)
-    print(f"✅ تم تفعيل الـ Webhook سحابياً على رابط: {webhook_url}")
-
-@app.on_event("shutdown")
-async def on_shutdown():
-    await bot_app.bot.delete_webhook()
-    await bot_app.stop()
-    await bot_app.uninitialize()
+# تسجيل معالج الأوامر (Handler) داخل الماكينة برمجياً
+bot_app.add_handler(CommandHandler("start", start))
 
 if __name__ == "__main__":
     uvicorn.run("bot:app", host="0.0.0.0", port=8000, reload=False)
