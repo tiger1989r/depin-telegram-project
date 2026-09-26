@@ -1,10 +1,9 @@
 import os
 import httpx
-from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -13,32 +12,11 @@ from database import get_or_create_user, get_balance, supabase
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TRAFF_TOKEN = os.getenv("TRAFFMONETIZER_TOKEN")
-# 🌐 رابط سيرفر ريندر الخاص بك الذي أرسلته سابقاً
-RENDER_URL = "https://onrender.com"
 
-# تهيئة البوت لإصدارات بايثون وتليجرام الحديثة
-bot_app = Application.builder().updater(None).token(TOKEN).build()
+# 1. بناء تطبيق البوت المستقر (تعطيل الـ Updater ليعمل بالويب-هوك فقط)
+bot_app = Application.builder().token(TOKEN).updater(None).build()
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """تهيئة وتنشيط الـ Webhook فور إقلاع السيرفر سحابياً"""
-    await bot_app.initialize()
-    await bot_app.start()
-    
-    # ربط البوت برابط الـ Webhook السحابي رسمياً
-    webhook_url = f"{RENDER_URL}/webhook"
-    await bot_app.bot.set_webhook(url=webhook_url)
-    print(f"✅ Webhook is live at: {webhook_url}")
-    
-    yield
-    
-    # 🟢 التصحيح البرمجي الآمن لإصدارات المكتبة الحديثة عند الإغلاق
-    await bot_app.bot.delete_webhook()
-    await bot_app.stop()
-    await bot_app.shutdown() # تم تصحيح الاسم هنا لمنع خطأ AttributeError
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -53,18 +31,21 @@ class MiningRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "Secure Webhook Server is Alive"}
+    return {"status": "Live Webhook Server is Alive"}
 
-# 🚀 نقطة الاستقبال الرئيسية لدفقات تليجرام
+# 🚀 البوابة الرئيسية القياسية: استقبال البيانات وقذفها للمكافحة فوراً
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
     try:
         data = await request.json()
+        
+        # هندسة الإرسال المباشر لـ المعالجات (Handlers) دون تجميد
         update = Update.de_json(data, bot_app.bot)
+        await bot_app.initialize()  # ضمان فتح الذاكرة
         await bot_app.process_update(update)
         return {"status": "ok"}
     except Exception as e:
-        print(f"Webhook Error: {e}")
+        print(f"Webhook Execution Error: {e}")
         return {"status": "error"}
 
 @app.post("/api/ping-mining")
@@ -79,19 +60,11 @@ async def ping_mining(request: MiningRequest):
         new_balance = current_balance + earned_amount
         
         supabase.table("app_users").update({"balance_usd": new_balance}).eq("telegram_id", request.telegram_id).execute()
-        
-        log_data = {
-            "user_id": request.telegram_id,
-            "mb_shared": 0.05, 
-            "earnings": earned_amount
-        }
-        supabase.table("traffic_logs").insert(log_data).execute()
-        
         return {"success": True, "new_balance": new_balance}
-    except Exception as e:
-        print(f"Mining Error: {e}")
+    except Exception:
         return {"success": True, "new_balance": get_balance(request.telegram_id)}
 
+# 🤖 أمر الـ Start الرئيسي ونظام الإحالة الفيروسي
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_user = update.effective_user
     get_or_create_user(tg_user.id, tg_user.username)
@@ -106,6 +79,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup, parse_mode="Markdown"
     )
 
+# تسجيل معالج الأوامر برمجياً في الماكينة الأساسية
 bot_app.add_handler(CommandHandler("start", start))
 
 if __name__ == "__main__":
