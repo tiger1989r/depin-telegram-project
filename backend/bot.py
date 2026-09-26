@@ -4,7 +4,7 @@ import httpx
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -13,10 +13,11 @@ from database import get_or_create_user, get_balance, supabase
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TRAFF_TOKEN = os.getenv("TRAFFMONETIZER_TOKEN")
+# 🟢 رابط سيرفرك الحقيقي الدائم على Render
+RENDER_URL = "https://onrender.com" 
 
 app = FastAPI()
 
-# 🛡️ السماح للواجهة المرفوعة على Vercel بالاتصال بالسيرفر دون حظر (CORS)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,30 +29,39 @@ app.add_middleware(
 class MiningRequest(BaseModel):
     telegram_id: int
 
+# تهيئة تطبيق البوت بشكل عالمي
+bot_app = Application.builder().token(TOKEN).build()
+
 @app.get("/")
 def home():
     return {"status": "Server is running securely"}
 
-# 🟢 هذا هو السطر الحاسم والمسار المفقود الذي يبحث عنه الهاتف
+# 🚀 رابط الـ Webhook المستهدف الذي سيرسل له التلجرام الرسائل حياً
+@app.post("/webhook")
+async def telegram_webhook(request: Request):
+    """استقبال الرسائل من التلجرام وتمريرها لكود البوت مباشرة"""
+    try:
+        data = await request.json()
+        update = Update.de_json(data, bot_app.bot)
+        await bot_app.process_update(update)
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"Webhook Error: {e}")
+        return {"status": "error"}
+
 @app.post("/api/ping-mining")
 async def ping_mining(request: MiningRequest):
-    """ربط إشارة الهاتف بتوجيه البيانات لحساب Traffmonetizer وتحديث الأرباح"""
     try:
-        # إرسال نبضة اتصال (Ping) إلى خوادم Traffmonetizer باستخدام التوكن الخاص بك
         async with httpx.AsyncClient(timeout=5.0) as client:
             headers = {"Authorization": f"Bearer {TRAFF_TOKEN}"} if TRAFF_TOKEN else {}
             await client.post("https://traffmonetizer.com", headers=headers)
             
-        # الحسبة المالية المحلية للمشتركين (نمنحهم رصيداً ثابتاً في Supabase عند كل نبضة)
         earned_amount = 0.0005 
-        
-        # جلب وتحديث الرصيد في قاعدة بيانات Supabase المستقلة
         current_balance = get_balance(request.telegram_id)
         new_balance = current_balance + earned_amount
         
         supabase.table("app_users").update({"balance_usd": new_balance}).eq("telegram_id", request.telegram_id).execute()
         
-        # تسجيل العملية في جدول حركة البيانات (Traffic Logs)
         log_data = {
             "user_id": request.telegram_id,
             "mb_shared": 0.05, 
@@ -60,15 +70,12 @@ async def ping_mining(request: MiningRequest):
         supabase.table("traffic_logs").insert(log_data).execute()
         
         return {"success": True, "new_balance": new_balance}
-        
     except Exception as e:
-        print(f"Traffmonetizer Mining Error: {e}")
-        raise HTTPException(status_code=500, detail="فشلت مزامنة البيانات السحابية")
+        print(f"Mining Error: {e}")
+        raise HTTPException(status_code=500, detail="Error")
 
-# --- أكواد وأوامر بوت التلجرام مع نظام الإحالة الفيروسي المدمج ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_user = update.effective_user
-    
     referrer_id = None
     if context.args:
         try:
@@ -92,59 +99,39 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if referrer_id:
             ref_user = supabase.table("app_users").select("balance_usd").eq("telegram_id", referrer_id).execute()
             if ref_user.data:
-                new_ref_balance = float(ref_user.data[0]["balance_usd"]) + 0.02
+                new_ref_balance = float(ref_user.data["balance_usd"]) + 0.02
                 supabase.table("app_users").update({"balance_usd": new_ref_balance}).eq("telegram_id", referrer_id).execute()
                 try:
-                    await context.bot.send_message(
-                        chat_id=referrer_id, 
-                        text=f"🎁 تهانينا! سجل مستخدم جديد عبر رابط الإحالة الخاص بك، وتمت إضافة 0.02\$ إلى رصيدك!"
-                    )
+                    await context.bot.send_message(chat_id=referrer_id, text=f"🎁 تمت إضافة 0.02\$ لرصيدك لإحالة مستخدم جديد!")
                 except Exception:
                     pass
     
     referral_link = f"https://t.me{context.bot.username}?start={tg_user.id}"
-    
-    keyboard = [
-        [InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://depin-telegram-project.vercel.app/"})]
-    ]
+    keyboard = [[InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://vercel.app"})]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
         f"أهلاً بك يا {tg_user.first_name} في شبكة التعدين التشاركية! 🚀\n\n"
-        f"🔗 رابط الإحالة الخاص بك لدعوة أصدقائك وكسب 10% من أرباحهم مستقبلاً هو:\n"
-        f"👉 `{referral_link}`\n\n"
-        f"انشره في مجموعات الفيس بوك والتلجرام لتبدأ بجني الدولارات تلقائياً!",
-        reply_markup=reply_markup,
-        parse_mode="Markdown"
+        f"🔗 رابط الإحالة الخاص بك هو:\n👉 `{referral_link}`",
+        reply_markup=reply_markup, parse_mode="Markdown"
     )
 
-a# امسح الأكواد من سطر async def main_bot(): وحتى نهاية الملف وضَع هذا الكود المنسق:
-
-async def main_bot():
-    """تهيئة وإعداد البوت بشكل متوافق مع البيئات السحابية"""
-    bot_app = Application.builder().token(TOKEN).build()
+# 🔄 إعداد وتشغيل المنظومة حياً عند إقلاع خادم ريندر
+@app.on_event("startup")
+async def on_startup():
     bot_app.add_handler(CommandHandler("start", start))
-    
-    # بناء البوت وبدء الاستماع الفوري للرسائل دون حجب السيرفر
     await bot_app.initialize()
     await bot_app.start()
-    
-    # تشغيل التحديث التلقائي كخلفية حية ومستمرة
-    updater = bot_app.updater
-    await updater.start_polling()
-    return bot_app
+    # ربط البوت برابط الـ Webhook السحابي رسمياً في التلجرام
+    webhook_url = f"{RENDER_URL}/webhook"
+    await bot_app.bot.set_webhook(url=webhook_url)
+    print(f"✅ تم تفعيل الـ Webhook سحابياً على رابط: {webhook_url}")
 
-# --- دالة التشغيل السحابية المشتركة (تمنع حجب البيانات) ---
-async def start_all():
-    print("🤖 جارٍ إنعاش وتشغيل بوت التلجرام...")
-    bot_app = await main_bot()
-    print("✅ البوت مستيقظ الآن ويستمع لـ /start بنجاح!")
-    
-    # تشغيل سيرفر FastAPI بشكل متوازي تماماً داخل حلقة الأحداث المشتركة
-    config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
-    server = uvicorn.Server(config)
-    await server.serve()
+@app.on_event("shutdown")
+async def on_shutdown():
+    await bot_app.bot.delete_webhook()
+    await bot_app.stop()
+    await bot_app.uninitialize()
 
 if __name__ == "__main__":
-    # إطلاق المنظومة المشتركة بأعلى كفاءة في بايثون الحديث
-    asyncio.run(start_all())
+    uvicorn.run("bot:app", host="0.0.0.0", port=8000, reload=False)
