@@ -105,7 +105,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     referral_link = f"https://t.me{context.bot.username}?start={tg_user.id}"
     
     keyboard = [
-        [InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://vercel.app"})]
+        [InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://depin-telegram-project.vercel.app/"})]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
@@ -118,18 +118,33 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode="Markdown"
     )
 
+a# امسح الأكواد من سطر async def main_bot(): وحتى نهاية الملف وضَع هذا الكود المنسق:
+
 async def main_bot():
+    """تهيئة وإعداد البوت بشكل متوافق مع البيئات السحابية"""
     bot_app = Application.builder().token(TOKEN).build()
     bot_app.add_handler(CommandHandler("start", start))
+    
+    # بناء البوت وبدء الاستماع الفوري للرسائل دون حجب السيرفر
     await bot_app.initialize()
     await bot_app.start()
-    await bot_app.updater.start_polling()
+    
+    # تشغيل التحديث التلقائي كخلفية حية ومستمرة
+    updater = bot_app.updater
+    await updater.start_polling()
+    return bot_app
 
+# --- دالة التشغيل السحابية المشتركة (تمنع حجب البيانات) ---
 async def start_all():
-    await main_bot()
+    print("🤖 جارٍ إنعاش وتشغيل بوت التلجرام...")
+    bot_app = await main_bot()
+    print("✅ البوت مستيقظ الآن ويستمع لـ /start بنجاح!")
+    
+    # تشغيل سيرفر FastAPI بشكل متوازي تماماً داخل حلقة الأحداث المشتركة
     config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
     server = uvicorn.Server(config)
     await server.serve()
 
 if __name__ == "__main__":
+    # إطلاق المنظومة المشتركة بأعلى كفاءة في بايثون الحديث
     asyncio.run(start_all())
