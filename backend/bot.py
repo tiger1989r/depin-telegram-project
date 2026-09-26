@@ -1,4 +1,5 @@
 import os
+import asyncio
 import httpx
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -12,9 +13,6 @@ from database import get_or_create_user, get_balance, supabase
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TRAFF_TOKEN = os.getenv("TRAFFMONETIZER_TOKEN")
-
-# 1. بناء تطبيق البوت المستقر (تعطيل الـ Updater ليعمل بالويب-هوك فقط)
-bot_app = Application.builder().token(TOKEN).updater(None).build()
 
 app = FastAPI()
 
@@ -31,25 +29,11 @@ class MiningRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "Live Webhook Server is Alive"}
-
-# 🚀 البوابة الرئيسية القياسية: استقبال البيانات وقذفها للمكافحة فوراً
-@app.post("/webhook")
-async def telegram_webhook(request: Request):
-    try:
-        data = await request.json()
-        
-        # هندسة الإرسال المباشر لـ المعالجات (Handlers) دون تجميد
-        update = Update.de_json(data, bot_app.bot)
-        await bot_app.initialize()  # ضمان فتح الذاكرة
-        await bot_app.process_update(update)
-        return {"status": "ok"}
-    except Exception as e:
-        print(f"Webhook Execution Error: {e}")
-        return {"status": "error"}
+    return {"status": "Production Server is Running Cleanly"}
 
 @app.post("/api/ping-mining")
 async def ping_mining(request: MiningRequest):
+    """استقبال نبضة الهاتف لتسجيل أرباح Traffmonetizer في Supabase"""
     try:
         async with httpx.AsyncClient(timeout=5.0) as client:
             headers = {"Authorization": f"Bearer {TRAFF_TOKEN}"} if TRAFF_TOKEN else {}
@@ -64,7 +48,7 @@ async def ping_mining(request: MiningRequest):
     except Exception:
         return {"success": True, "new_balance": get_balance(request.telegram_id)}
 
-# 🤖 أمر الـ Start الرئيسي ونظام الإحالة الفيروسي
+# 🤖 أمر الـ Start الرئيسي ونظام الإحالة الفيروسي للمستخدمين السوريين
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tg_user = update.effective_user
     get_or_create_user(tg_user.id, tg_user.username)
@@ -79,8 +63,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup, parse_mode="Markdown"
     )
 
-# تسجيل معالج الأوامر برمجياً في الماكينة الأساسية
-bot_app.add_handler(CommandHandler("start", start))
+# 🔄 تشغيل البوت وإدارة حلقة الأحداث بالتوازي مع السيرفر السحابي
+async def run_bot_polling():
+    bot_app = Application.builder().token(TOKEN).build()
+    bot_app.add_handler(CommandHandler("start", start))
+    
+    await bot_app.initialize()
+    await bot_app.start()
+    
+    # 🟢 مسح أي ويب-هوك معلق قديم لإرغام خوادم تليجرام على تمرير الرسائل فوراً لقناة الاستطلاع
+    await bot_app.bot.delete_webhook()
+    
+    print("🤖 بوت التليجرام مستيقظ سحابياً ويستمع لـ /start حياً...")
+    await bot_app.updater.start_polling(drop_pending_updates=True)
+
+async def start_services():
+    # تشغيل البوت كخلفية مستمرة بالتوازي دون حجب السيرفر
+    asyncio.create_task(run_bot_polling())
+    
+    # تشغيل خادم الـ API على المنفذ المطلوب في ريندر
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, loop="asyncio")
+    server = uvicorn.Server(config)
+    await server.serve()
 
 if __name__ == "__main__":
-    uvicorn.run("bot:app", host="0.0.0.0", port=8000, reload=False)
+    asyncio.run(start_services())
