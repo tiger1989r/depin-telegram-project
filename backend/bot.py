@@ -1,22 +1,22 @@
 import os
 import asyncio
+import shutil
 from contextlib import asynccontextmanager
 from urllib.parse import urlparse
 
-import httpx
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, ContextTypes
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import uvicorn
-from database import get_or_create_user, get_balance, supabase
+from database import get_or_create_user
 
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-PROXY_URL = os.getenv("PACKETSTREAM_PROXY", "proxy.packetstream.io:3128")
-API_KEY = os.getenv("PACKETSTREAM_API_KEY", "").strip()
+TRAFFMONETIZER_TOKEN = os.getenv("TRAFFMONETIZER_TOKEN", "").strip()
+TRAFFMONETIZER_CONTAINER = "depin-traffmonetizer"
+TRAFFMONETIZER_STATUS = "not_configured"
 PRODUCTION_WEB_APP_URL = "https://depin-telegram-project.vercel.app/"
 WEB_APP_URL = os.getenv("WEB_APP_URL", PRODUCTION_WEB_APP_URL).strip()
 PORT = int(os.getenv("PORT", "8000"))
@@ -30,8 +30,57 @@ if not WEB_APP_URL:
 if urlparse(WEB_APP_URL).scheme != "https":
     raise RuntimeError("WEB_APP_URL must be a valid HTTPS URL for Telegram Mini App buttons.")
 
+async def run_docker(*args: str) -> tuple[int, str]:
+    process = await asyncio.create_subprocess_exec(
+        "docker",
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.DEVNULL,
+    )
+    stdout, _ = await process.communicate()
+    return process.returncode or 0, stdout.decode(errors="replace").strip()
+
+async def start_traffmonetizer():
+    global TRAFFMONETIZER_STATUS
+
+    if not TRAFFMONETIZER_TOKEN:
+        TRAFFMONETIZER_STATUS = "not_configured"
+        return
+
+    if not shutil.which("docker"):
+        TRAFFMONETIZER_STATUS = "docker_unavailable"
+        return
+
+    code, running = await run_docker(
+        "inspect", "--format={{.State.Running}}", TRAFFMONETIZER_CONTAINER
+    )
+    if code == 0:
+        if running.lower() == "true":
+            TRAFFMONETIZER_STATUS = "running"
+            return
+        code, _ = await run_docker("start", TRAFFMONETIZER_CONTAINER)
+    else:
+        code, _ = await run_docker(
+            "run",
+            "-d",
+            "--restart",
+            "unless-stopped",
+            "--name",
+            TRAFFMONETIZER_CONTAINER,
+            "traffmonetizer/cli_v2",
+            "start",
+            "accept",
+            "--token",
+            TRAFFMONETIZER_TOKEN,
+            "--device-name",
+            "depin-telegram-project",
+        )
+
+    TRAFFMONETIZER_STATUS = "running" if code == 0 else "error"
+
 @asynccontextmanager
 async def telegram_lifespan(fastapi_app: FastAPI):
+    await start_traffmonetizer()
     telegram_app = Application.builder().token(TOKEN).build()
     telegram_app.add_handler(CommandHandler("start", start))
     await telegram_app.initialize()
@@ -55,42 +104,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-class MiningRequest(BaseModel):
-    telegram_id: int
-
 @app.get("/")
 def home():
     return {"status": "Server is running securely"}
 
-@app.post("/api/ping-mining")
-async def ping_mining(request: MiningRequest):
-    """رابط يستقبل إشارة التعدين من الواجهة ويحسب الأرباح عبر البروكسي"""
-    try:
-        proxy_auth = f"http://{API_KEY}@{PROXY_URL}" if API_KEY else None
-        
-        async with httpx.AsyncClient(proxy=proxy_auth, timeout=5.0) as client:
-            response = await client.get("https://google.com")
-            bytes_transferred = len(response.content) + 500
-        
-        earned_amount = 0.0005 
-        
-        current_balance = get_balance(request.telegram_id)
-        new_balance = current_balance + earned_amount
-        
-        supabase.table("app_users").update({"balance_usd": new_balance}).eq("telegram_id", request.telegram_id).execute()
-        
-        log_data = {
-            "user_id": request.telegram_id,
-            "mb_shared": round(bytes_transferred / (1024 * 1024), 4),
-            "earnings": earned_amount
-        }
-        supabase.table("traffic_logs").insert(log_data).execute()
-        
-        return {"success": True, "new_balance": new_balance}
-        
-    except Exception as e:
-        print(f"Mining Error: {e}")
-        raise HTTPException(status_code=500, detail="فشلت عملية معالجة البيانات، تحقق من اتصال الشبكة")
+@app.get("/api/traffmonetizer/status")
+async def traffmonetizer_status():
+    if not TRAFFMONETIZER_TOKEN:
+        return {"status": "not_configured"}
+    if not shutil.which("docker"):
+        return {"status": "docker_unavailable"}
+
+    code, running = await run_docker(
+        "inspect", "--format={{.State.Running}}", TRAFFMONETIZER_CONTAINER
+    )
+    if code == 0:
+        return {"status": "running" if running.lower() == "true" else "not_running"}
+    if TRAFFMONETIZER_STATUS == "error":
+        return {"status": "error"}
+    return {"status": "not_running"}
 
 # --- أكواد وأوامر بوت التلجرام ---
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,7 +136,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await update.message.reply_text(
         f"أهلاً بك يا {tg_user.first_name} في شبكة التشغيل التشاركية! 🚀\n\n"
-        f"اضغط على الزر أدناه لفتح واجهة التطبيق والبدء بحصد الأرباح الحقيقية بالدولار.",
+        f"اضغط على الزر أدناه لمتابعة حالة خدمة TraffMonetizer المشتركة للمشروع.",
         reply_markup=reply_markup
     )
 
