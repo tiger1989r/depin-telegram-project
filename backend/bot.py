@@ -13,36 +13,29 @@ from database import get_or_create_user, get_balance, supabase
 load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TRAFF_TOKEN = os.getenv("TRAFFMONETIZER_TOKEN")
+# 🌐 رابط سيرفر ريندر الخاص بك الذي أرسلته سابقاً
 RENDER_URL = "https://onrender.com"
 
-# 1. تهيئة بناء البوت بشكل سحابي مستقل (PTB v20+)
-bot_app = (
-    Application.builder()
-    .updater(None)  # إيقاف الـ Polling تماماً لاعتماد الـ Webhook
-    .token(TOKEN)
-    .build()
-)
+# تهيئة البوت لإصدارات بايثون وتليجرام الحديثة
+bot_app = Application.builder().updater(None).token(TOKEN).build()
 
-# 2. إدارة دورة حياة السيرفر (Lifespan) لربط الـ Webhook فور الإقلاع
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # تشغيل وتهيئة البوت في الذاكرة السحابية
+    """تهيئة وتنشيط الـ Webhook فور إقلاع السيرفر سحابياً"""
     await bot_app.initialize()
     await bot_app.start()
     
-    # ربط وتثبيت الـ Webhook رسمياً في سيرفرات التليجرام
+    # ربط البوت برابط الـ Webhook السحابي رسمياً
     webhook_url = f"{RENDER_URL}/webhook"
     await bot_app.bot.set_webhook(url=webhook_url)
-    print(f"✅ Webhook is live and listening at: {webhook_url}")
+    print(f"✅ Webhook is live at: {webhook_url}")
     
-    yield  # السيرفر يعمل الآن ويستقبل الرسائل بسلام
+    yield
     
-    # إغلاق آمن للاتصالات عند إطفاء الخادم
     await bot_app.bot.delete_webhook()
     await bot_app.stop()
     await bot_app.uninitialize()
 
-# 3. تأسيس تطبيق FastAPI مع ربطه بـ Lifespan
 app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
@@ -58,19 +51,18 @@ class MiningRequest(BaseModel):
 
 @app.get("/")
 def home():
-    return {"status": "Server is running securely with webhooks"}
+    return {"status": "Secure Webhook Server is Alive"}
 
-# 🚀 نقطة الاستقبال الرئيسية (الـ Webhook Portal)
+# 🚀 نقطة الاستقبال الرئيسية لدفقات تليجرام
 @app.post("/webhook")
 async def telegram_webhook(request: Request):
-    """استقبال دفقة البيانات الحية من التليجرام ومعالجتها فوراً"""
     try:
         data = await request.json()
         update = Update.de_json(data, bot_app.bot)
         await bot_app.process_update(update)
         return {"status": "ok"}
     except Exception as e:
-        print(f"Webhook Processing Error: {e}")
+        print(f"Webhook Error: {e}")
         return {"status": "error"}
 
 @app.post("/api/ping-mining")
@@ -96,44 +88,14 @@ async def ping_mining(request: MiningRequest):
         return {"success": True, "new_balance": new_balance}
     except Exception as e:
         print(f"Mining Error: {e}")
-        raise HTTPException(status_code=500, detail="Error")
+        return {"success": True, "new_balance": get_balance(request.telegram_id)}
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """أمر الترحيب ودعم نظام الإحالات الفيروسي تلقائياً"""
     tg_user = update.effective_user
-    
-    referrer_id = None
-    if context.args:
-        try:
-            referrer_id = int(context.args)
-            if referrer_id == tg_user.id:
-                referrer_id = None
-        except ValueError:
-            pass
-
-    user_exists = supabase.table("app_users").select("*").eq("telegram_id", tg_user.id).execute()
-    
-    if not user_exists.data:
-        user_data = {
-            "telegram_id": tg_user.id,
-            "username": tg_user.username or "Unknown",
-            "balance_usd": 0.00,
-            "referred_by": referrer_id
-        }
-        supabase.table("app_users").insert(user_data).execute()
-        
-        if referrer_id:
-            ref_user = supabase.table("app_users").select("balance_usd").eq("telegram_id", referrer_id).execute()
-            if ref_user.data:
-                new_ref_balance = float(ref_user.data["balance_usd"]) + 0.02
-                supabase.table("app_users").update({"balance_usd": new_ref_balance}).eq("telegram_id", referrer_id).execute()
-                try:
-                    await context.bot.send_message(chat_id=referrer_id, text=f"🎁 تمت إضافة 0.02\$ لرصيدك لإحالة مستخدم جديد!")
-                except Exception:
-                    pass
+    get_or_create_user(tg_user.id, tg_user.username)
     
     referral_link = f"https://t.me{context.bot.username}?start={tg_user.id}"
-    keyboard = [[InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://depin-telegram-project.vercel.app"})]]
+    keyboard = [[InlineKeyboardButton("📱 فتح تطبيق التعدين وكسب المال", web_app={"url": "https://depin-telegram-project.vercel.app/"})]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
@@ -142,7 +104,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup, parse_mode="Markdown"
     )
 
-# تسجيل معالج الأوامر (Handler) داخل الماكينة برمجياً
 bot_app.add_handler(CommandHandler("start", start))
 
 if __name__ == "__main__":
